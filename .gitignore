@@ -1,0 +1,8 @@
+# Ignore everything by default
+*
+
+# But explicitly include these files
+!.gitignore
+!app.js
+!package.json
+!package-lock.json
