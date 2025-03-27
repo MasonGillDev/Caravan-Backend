@@ -602,7 +602,7 @@ const ensureDirectoryExistence = (filePath) => {
 const allowedIPs = ["127.0.0.1", "::1", "192.168.1."]; // localhost IPv4, localhost IPv6, local network
 
 // Apply to a specific route
-app.get("/api/Quad-Update", restrictByIP(allowedIPs), async (req, res) => {
+app.get("/api/Quad-Update", async (req, res) => {
   try {
     const [locations] = await pool.query(
       `SELECT latitude, longitude
