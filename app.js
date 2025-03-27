@@ -1,4 +1,5 @@
 // Description: This file contains the code for the Business Recommendation API server.
+console.log("Starting server...");
 const express = require("express");
 const mysql = require("mysql2/promise"); // Using promise version for async/await
 const bcrypt = require("bcrypt");
@@ -21,7 +22,7 @@ app.use(cors());
 app.get("/", (req, res) => {
   res.send("Hello, Business Recommendation App! Your app is running.");
 });
-
+console.log("Creating database pool...");
 // Create a connection pool to the MySQL database
 const pool = mysql.createPool({
   host: process.env.DB_HOST,
@@ -33,7 +34,7 @@ const pool = mysql.createPool({
   connectionLimit: 10,
   queueLimit: 0,
 });
-
+console.log("Database pool created");
 console.log("Database connecting to:", process.env.DB_HOST);
 
 // Middleware to verify JWT token
@@ -565,7 +566,58 @@ app.post("/api/friends/request", authenticateToken, async (req, res) => {
   }
 });
 
-app.get("/api/friends/requests", authenticateToken, async (req, res) => {
+const restrictByIP = (allowedIPs) => {
+  return (req, res, next) => {
+    const clientIP =
+      req.ip ||
+      req.connection.remoteAddress ||
+      req.socket.remoteAddress ||
+      req.connection.socket.remoteAddress;
+
+    // Check if client IP is in the allowed list
+    // The includes handles exact matches, the some with startsWith handles CIDR-like patterns
+    if (
+      allowedIPs.includes(clientIP) ||
+      allowedIPs.some((ip) => clientIP.startsWith(ip))
+    ) {
+      return next(); // IP is allowed, proceed to the endpoint
+    }
+
+    // IP is not allowed
+    console.log(`Access denied for IP: ${clientIP}`);
+    return res.status(403).json({ error: "Access denied" });
+  };
+};
+
+const ensureDirectoryExistence = (filePath) => {
+  const dirname = path.dirname(filePath);
+  if (fs.existsSync(dirname)) {
+    return true;
+  }
+  ensureDirectoryExistence(dirname);
+  fs.mkdirSync(dirname);
+};
+
+// Apply the middleware to specific routes
+const allowedIPs = ["127.0.0.1", "::1", "192.168.1."]; // localhost IPv4, localhost IPv6, local network
+
+// Apply to a specific route
+app.get("/api/Quad-Update", restrictByIP(allowedIPs), async (req, res) => {
+  try {
+    const [locations] = await pool.query(
+      `SELECT latitude, longitude
+       FROM locations
+       ORDER BY location_id`
+    );
+
+    res.json({ data: locations });
+  } catch (error) {
+    console.error("Error retrieving locations:", error.message);
+    res.status(500).json({ error: "Failed to retrieve locations" });
+  }
+});
+
+app.get("/api/friends/requests", async (req, res) => {
   console.log("getting request...");
   try {
     const userId = req.user.id;
@@ -772,6 +824,79 @@ app.get("/api/survey/questions", async (req, res) => {
   } catch (error) {
     console.error("Error retrieving survey questions:", error.message);
     res.status(500).json({ error: "Failed to retrieve survey questions" });
+  }
+});
+
+// Get all current user locations for heatmap
+app.get("/api/user/heatmap", authenticateToken, async (req, res) => {
+  try {
+    // Optional query parameter for radius (default 10km)
+    const radius = req.query.radius || 10;
+
+    // Get user's current location as center point
+    const userId = req.user.id;
+
+    // First get the user's current location
+    const [userLocation] = await pool.query(
+      `SELECT l.latitude, l.longitude
+       FROM user_locations ul
+       JOIN locations l ON ul.location_id = l.location_id
+       WHERE ul.user_id = ? AND ul.is_current = TRUE`,
+      [userId]
+    );
+
+    // If user doesn't have a location, return empty result
+    if (userLocation.length === 0) {
+      return res.json({
+        locations: [],
+        count: 0,
+        message: "No location data available",
+      });
+    }
+
+    const userLat = userLocation[0].latitude;
+    const userLng = userLocation[0].longitude;
+
+    // Get all user current locations within specified radius
+    const [locationResults] = await pool.query(
+      `SELECT l.location_id, l.latitude, l.longitude, l.city, l.state,
+              l.country, l.postal_code, ul.timestamp,
+              (6371 * acos(cos(radians(?)) * cos(radians(l.latitude)) *
+              cos(radians(l.longitude) - radians(?)) +
+              sin(radians(?)) * sin(radians(l.latitude)))) AS distance
+       FROM user_locations ul
+       JOIN locations l ON ul.location_id = l.location_id
+       WHERE ul.is_current = TRUE
+       HAVING distance < ?
+       ORDER BY distance`,
+      [userLat, userLng, userLat, radius]
+    );
+
+    // Format locations to match the expected LocationModel on the client
+    const locations = locationResults.map((loc) => ({
+      location_id: loc.location_id,
+      latitude: loc.latitude,
+      longitude: loc.longitude,
+      city: loc.city,
+      state: loc.state,
+      country: loc.country,
+      postal_code: loc.postal_code,
+      timestamp: loc.timestamp,
+      is_current: true,
+    }));
+
+    // Return the data
+    res.json({
+      locations: locations,
+      count: locations.length,
+      center: {
+        latitude: userLat,
+        longitude: userLng,
+      },
+    });
+  } catch (error) {
+    console.error("Error retrieving heatmap data:", error.message);
+    res.status(500).json({ error: "Failed to retrieve heatmap data" });
   }
 });
 
