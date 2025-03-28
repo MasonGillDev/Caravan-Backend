@@ -138,4 +138,4 @@ class GeoLocationService {
 }
 
 // Export a singleton instance of the service
-module.exports = new GeoLocationService();
+module.exports = new GeoLocationService(db);
