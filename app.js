@@ -8,6 +8,8 @@ const app = express();
 const cors = require("cors");
 const PORT = process.env.PORT || 3000;
 require("dotenv").config();
+const userLocationRoutes = require("./userLocationRoute");
+
 console.log("Environment variables loaded:", {
   DB_HOST: process.env.DB_HOST,
   DB_USER: process.env.DB_USER,
@@ -150,70 +152,7 @@ app.post("/api/login", async (req, res) => {
 // USER LOCATION ENDPOINTS
 
 // Update user's current location
-app.post("/api/user/location", authenticateToken, async (req, res) => {
-  // Create a connection for transaction
-  const connection = await pool.getConnection();
-
-  try {
-    const { latitude, longitude, city, state, country, postal_code } = req.body;
-    const userId = req.user.id;
-
-    // Basic validation
-    if (!latitude || !longitude) {
-      connection.release();
-      return res
-        .status(400)
-        .json({ error: "Latitude and longitude are required" });
-    }
-
-    // Start transaction
-    await connection.beginTransaction();
-
-    // 1. First, insert the new location record
-    const [locationResult] = await connection.query(
-      "INSERT INTO locations (latitude, longitude, city, state, country, postal_code) VALUES (?, ?, ?, ?, ?, ?)",
-      [
-        latitude,
-        longitude,
-        city || null,
-        state || null,
-        country || null,
-        postal_code || null,
-      ]
-    );
-    const locationId = locationResult.insertId;
-
-    // 2. Set all existing locations for this user to is_current = FALSE
-    await connection.query(
-      "UPDATE user_locations SET is_current = FALSE WHERE user_id = ?",
-      [userId]
-    );
-
-    // 3. Insert the new current location
-    const [userLocationResult] = await connection.query(
-      "INSERT INTO user_locations (user_id, location_id, is_current) VALUES (?, ?, TRUE)",
-      [userId, locationId]
-    );
-
-    // Commit the transaction
-    await connection.commit();
-
-    // Return success
-    res.status(201).json({
-      message: "User location updated successfully",
-      locationId: locationId,
-      userLocationId: userLocationResult.insertId,
-    });
-  } catch (error) {
-    // Rollback on error
-    await connection.rollback();
-    console.error("Error updating user location:", error.message);
-    res.status(500).json({ error: "Failed to update location" });
-  } finally {
-    // Always release the connection
-    connection.release();
-  }
-});
+app.use("/api/user", userLocationRoutes);
 
 // Get user's current location
 app.get("/api/user/location", authenticateToken, async (req, res) => {
@@ -603,6 +542,7 @@ const allowedIPs = ["127.0.0.1", "::1", "192.168.1."]; // localhost IPv4, localh
 
 // Apply to a specific route
 app.get("/api/Quad-Update", async (req, res) => {
+  // add restrictByIP(allowedIPs) as a second argument when we have everything running on  server.
   try {
     const [locations] = await pool.query(
       `SELECT latitude, longitude
