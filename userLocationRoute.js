@@ -35,10 +35,12 @@ const authenticateToken = (req, res, next) => {
 router.post("/location", async (req, res) => {
   // Create a connection for MySQL transaction
   const mysqlConnection = await mysqlPool.getConnection();
+  console.log("MySQL connection established");
 
   try {
     const { latitude, longitude, city, state, country, postal_code, user_id } =
       req.body;
+    console.log("Request body:", req.body);
 
     // For testing, get userId from request body
     // In production, get it from the JWT token using: const userId = req.user.id;
