@@ -7,15 +7,17 @@
     "start": "node app.js",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
-  "author": "Your Name",
+  "author": "Mason GIll",
   "license": "ISC",
   "dependencies": {
     "bcrypt": "^5.1.1",
+    "canvas": "^3.1.2",
     "cors": "^2.8.5",
     "dotenv": "^16.4.7",
     "express": "^4.21.2",
     "jsonwebtoken": "^9.0.2",
     "mysql2": "^3.0.0",
-    "pg": "^8.14.1"
+    "pg": "^8.14.1",
+    "sharp": "^0.34.2"
   }
 }
